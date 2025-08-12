@@ -53,4 +53,4 @@ async def startup_event():
 if __name__ == "__main__":
     # Remove reload=True to prevent automatic restarts
     port = int(os.getenv("VLLM_CONTROLLER_PORT", "12435"))
-    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=port)
