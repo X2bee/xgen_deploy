@@ -1,0 +1,194 @@
+$primary-color: #007bff;
+$primary-hover-color: #0056b3;
+$text-color: #333;
+$label-color: #555;
+$border-color: #ddd;
+$background-color: #f4f7f6;
+$box-background-color: #ffffff;
+$box-shadow-color: rgba(0, 0, 0, 0.1);
+
+.loginPage {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  min-height: 100vh;
+  background-color: $background-color;
+  font-family: 'Pretendard', sans-serif;
+}
+
+.loginBox {
+  background: $box-background-color;
+  padding: 2.5rem;
+  border-radius: 12px;
+  box-shadow: 0 8px 25px $box-shadow-color;
+  width: 100%;
+  max-width: 420px;
+  text-align: center;
+
+  .title {
+    font-size: 2rem;
+    font-weight: 700;
+    color: $text-color;
+    margin-bottom: 0.5rem;
+  }
+
+  .subtitle {
+    color: $label-color;
+    margin-bottom: 2rem;
+  }
+}
+
+.loginForm {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.inputGroup {
+  text-align: left;
+
+  label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+    color: $label-color;
+  }
+
+  input {
+    width: 100%;
+    padding: 0.875rem;
+    border: 1px solid $border-color;
+    border-radius: 8px;
+    font-size: 1rem;
+    transition: border-color 0.2s, box-shadow 0.2s;
+
+    &:focus {
+      outline: none;
+      border-color: $primary-color;
+      box-shadow: 0 0 0 3px rgba($primary-color, 0.2);
+    }
+  }
+}
+
+.buttons{
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.loginButton {
+  width: 100%;
+  padding: 0.875rem;
+  border: none;
+  border-radius: 8px;
+  background-color: $primary-color;
+  color: white;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
+
+  &:hover {
+    background-color: $primary-hover-color;
+  }
+}
+
+.guestButton {
+  width: 100%;
+  padding: 0.875rem;
+  border: 1px solid $primary-color;
+  border-radius: 8px;
+  background-color: transparent;
+  color: $primary-color;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover {
+    background-color: rgba(0, 123, 255, 0.1);
+    border-color: $primary-hover-color;
+    color: $primary-hover-color;
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
+}
+
+.links {
+  margin-top: 1.5rem;
+  font-size: 0.875rem;
+
+  a {
+    color: $label-color;
+    text-decoration: none;
+    transition: color 0.2s;
+
+    &:hover {
+      color: $primary-color;
+      text-decoration: underline;
+    }
+
+    &:not(:last-child)::after {
+      content: '|';
+      margin: 0 0.75rem;
+      color: $border-color;
+    }
+  }
+}
+
+.successContainer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 2rem 0;
+}
+
+.successMessage,
+.errorMessage {
+  font-size: 0.9rem;
+  padding: 0.75rem;
+  border-radius: 8px;
+  width: 100%;
+}
+
+.successMessage {
+  color: #155724;
+  background-color: #d4edda;
+  border: 1px solid #c3e6cb;
+}
+
+.errorMessage {
+  color: #721c24;
+  background-color: #f8d7da;
+  border: 1px solid #f5c6cb;
+}
+
+.error {
+  color: #dc3545;
+  font-size: 0.875rem;
+  margin: 0.5rem 0;
+  text-align: center;
+  background-color: #f8d7da;
+  border: 1px solid #f5c6cb;
+  border-radius: 4px;
+  padding: 0.75rem;
+}
+
+.actionLink {
+  display: inline-block;
+  padding: 0.75rem 1.5rem;
+  background-color: #007bff;
+  color: white;
+  text-decoration: none;
+  border-radius: 8px;
+  font-weight: 600;
+  transition: background-color 0.2s;
+
+  &:hover {
+    background-color: #0056b3;
+  }
+}

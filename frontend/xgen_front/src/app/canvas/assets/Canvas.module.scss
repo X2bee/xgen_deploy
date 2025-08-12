@@ -1,0 +1,42 @@
+@use "@/app/_common/_variables" as *;
+
+.canvasContainer {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    background-color: $canvas-background;
+    position: relative;
+    cursor: grab;
+}
+
+.canvasGrid {
+    width: 5000vw;
+    height: 5000vh;
+    position: relative;
+    transform-origin: 0 0;
+
+    background-color: $canvas-grid-background;
+    background-image:
+        linear-gradient($canvas-grid-minor 1px, transparent 1px),
+        linear-gradient(90deg, $canvas-grid-minor 1px, transparent 1px),
+        linear-gradient($canvas-grid-major 1px, transparent 1px),
+        linear-gradient(90deg, $canvas-grid-major 1px, transparent 1px);
+
+    background-size:
+        $canvas-grid-size-minor $canvas-grid-size-minor,
+        $canvas-grid-size-minor $canvas-grid-size-minor,
+        $canvas-grid-size-major $canvas-grid-size-major,
+        $canvas-grid-size-major $canvas-grid-size-major;
+}
+
+.svgLayer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    overflow: visible;
+    z-index: 10;
+
+}

@@ -1,0 +1,710 @@
+.node {
+    position: absolute;
+    min-width: 450px;
+    background-color: #ffffff;
+    border-radius: 12px;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+    border: 2px solid #95979c;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    user-select: none;
+    -webkit-user-select: none;
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    min-height: auto;
+
+    &.selected {
+        border-color: #3b82f6;
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.4), 0 8px 24px rgba(0, 0, 0, 0.2);
+        z-index: 30;
+    }
+
+    &.predicted {
+        border: 2px dashed #10b981;
+        background-color: rgba(255, 255, 255, 0.95);
+        transition: opacity 0.3s ease, transform 0.2s ease, border-style 0.2s ease;
+        z-index: 25;
+        box-shadow: 0 4px 12px rgba(16, 185, 129, 0.1);
+
+        // 예측 노드임을 알리는 작은 라벨 추가
+        &::before {
+            content: "Predicted";
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            background: #10b981;
+            color: white;
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: 500;
+            z-index: 1;
+        }
+
+        &:hover {
+            transform: translate(0, 0) scale(1.02);
+            box-shadow: 0 8px 20px rgba(16, 185, 129, 0.2);
+            border-style: solid;
+            border-color: #059669;
+
+            &::before {
+                background: #059669;
+            }
+        }
+    }
+}
+
+.header {
+    padding: 12px 16px;
+    font-weight: 600;
+    font-size: 1rem; // 16px
+    color: #111827;
+    border-top-left-radius: 12px;
+    border-top-right-radius: 12px;
+    border-bottom: 1px solid #f3f4f6;
+    cursor: grab;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 1;
+}
+
+.functionId {
+    font-size: 0.75rem;
+    color: #6b7280;
+    font-weight: normal;
+}
+
+// --- Node Name Editing Styles ---
+.nodeName {
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.2s ease;
+    padding: 2px 4px;
+    border-radius: 4px;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+
+    &:hover {
+        background-color: rgba(59, 130, 246, 0.1);
+    }
+}
+
+.nameInput {
+    background: #fff;
+    border: 2px solid #3b82f6;
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #111827;
+    outline: none;
+    min-width: 100px;
+    max-width: 200px;
+    font-family: inherit;
+    user-select: text;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+    -webkit-user-drag: none;
+    -khtml-user-drag: none;
+    -moz-user-drag: none;
+    -o-user-drag: none;
+
+    &:focus {
+        box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+    }
+}
+
+.body {
+    padding: 12px 0;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+// --- IO 섹션 스타일 ---
+.ioContainer {
+    display: flex;
+    justify-content: space-between;
+    padding: 0 16px;
+}
+
+.column {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    flex-basis: 48%; // [수정] 너비 미세 조정
+
+    // [추가] Output만 있을 때 컬럼 너비를 100%로
+    &.fullWidth {
+        flex-basis: 100%;
+    }
+}
+
+.outputColumn {
+    align-items: flex-end;
+
+    .portRow {
+        justify-content: flex-end;
+    }
+}
+
+.sectionHeader {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: #838a94;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    span {
+        flex: 1;
+    }
+}
+
+.addParameterButton {
+    background: #f3f4f6;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: #6b7280;
+    transition: all 0.2s ease;
+
+    &:hover {
+        background: #e5e7eb;
+        border-color: #9ca3af;
+        color: #374151;
+    }
+
+    &:active {
+        background: #d1d5db;
+    }
+
+    svg {
+        width: 12px;
+        height: 12px;
+    }
+}
+
+.deleteParameterButton {
+    background: #f3f4f6;
+    border: 1px solid #d1d5db;
+    border-radius: 3px;
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: #6b7280;
+    transition: all 0.2s ease;
+    margin-left: 4px;
+
+    &:hover {
+        background: #fef2f2;
+        border-color: #fca5a5;
+        color: #dc2626;
+    }
+
+    &:active {
+        background: #fee2e2;
+    }
+
+    svg {
+        width: 10px;
+        height: 10px;
+    }
+}
+
+.downloadButton {
+    background: #f0f9ff;
+    border: 1px solid #0ea5e9;
+    border-radius: 3px;
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: #0ea5e9;
+    transition: all 0.2s ease;
+    margin-left: 4px;
+
+    &:hover {
+        background: #0ea5e9;
+        color: white;
+        transform: scale(1.1);
+    }
+
+    &:active {
+        background: #0284c7;
+        transform: scale(0.95);
+    }
+
+    svg {
+        width: 12px;
+        height: 12px;
+    }
+}
+
+.portRow {
+    display: flex;
+    align-items: center;
+    gap: 12px; // [수정] 간격 조정
+}
+
+.portLabel {
+    flex: 1;
+    font-size: 0.875rem;
+    color: #4b5563;
+
+    &.required::after {
+        content: " *";
+        color: #ef4444;
+        font-weight: bold;
+    }
+}
+
+
+.port {
+    position: relative;
+    z-index: 5;
+
+    padding: 3px 12px;
+    border-radius: 6px;
+    min-width: 50px;
+
+    // 텍스트 스타일
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-align: center;
+    color: #374151;
+
+    // 테두리 및 기본 색상
+    background-color: #fff;
+    border: 2px solid #adb5bd;
+    transition: all 0.2s ease;
+    cursor: crosshair;
+
+    // 타입별 색상 (테두리 색상으로 구분)
+    &.type-STR { border-color: #5D9CF4; }
+    &.type-INT { border-color: #7AD37A; }
+    &.type-FLOAT { border-color: #F7C966; }
+    &.type-ANY { border-color: #9C5BF4; } // 보라색 계열로 ANY 타입 표시
+
+    // 다중 연결 포트 스타일
+    &.multi {
+        background-color: #dcf5f7;
+    }
+
+    // 상호작용 스타일
+    &:hover {
+        transform: scale(1);
+        filter: brightness(0.95);
+    }
+
+    &.snapping {
+        // border-width: 3px;
+        transform: scale(1.05);
+    }
+
+    &.invalid-snap {
+        border-color: #e53e3e !important;
+        background-color: #fed7d7;
+        cursor: not-allowed;
+    }
+}
+
+// .port.multi {
+//     border-radius: 4px;
+//     background-color: #d1d5db;
+// }
+
+.divider {
+    height: 2px;
+    background-color: #a8abb388;
+    margin: 16px 0;
+}
+
+.paramSection {
+    padding: 0 16px;
+}
+
+.param {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.875rem;
+    margin-top: 10px;
+    margin-bottom: 6px;
+
+    &:last-child {
+        margin-bottom: 0;
+    }
+}
+
+.paramKey {
+    color: #6b7280;
+    margin-right: 8px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    position: relative;
+
+    &.required::after {
+        content: " *";
+        color: #ef4444;
+        font-weight: bold;
+    }
+}
+
+.infoIcon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background-color: #3b82f6;
+    color: white;
+    font-size: 10px;
+    font-weight: bold;
+    cursor: help;
+    margin-right: 2px;
+    transition: all 0.2s ease;
+
+    &:hover {
+        background-color: #2563eb;
+        transform: scale(1.1);
+    }
+}
+
+.tooltip {
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: rgba(17, 24, 39, 0.95);
+    color: white;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: normal;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 1000;
+    max-width: 250px;
+    min-width: 150px;
+    text-align: left;
+    pointer-events: none;
+    margin-bottom: 6px;
+
+    // 말풍선 꼬리
+    &::after {
+        content: '';
+        position: absolute;
+        top: 100%;
+        left: 50%;
+        transform: translateX(-50%);
+        border: 5px solid transparent;
+        border-top-color: rgba(17, 24, 39, 0.95);
+    }
+
+    // 애니메이션
+    animation: tooltipFadeIn 0.2s ease-out;
+}
+
+@keyframes tooltipFadeIn {
+    from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(4px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+    }
+}
+
+.refreshButton {
+    background: none;
+    border: none;
+    padding: 2px;
+    cursor: pointer;
+    color: #6b7280;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 2px;
+    transition: all 0.2s ease;
+
+    &:hover {
+        color: #3b82f6;
+        background-color: #f3f4f6;
+    }
+
+    &:active {
+        color: #2563eb;
+        transform: scale(0.95);
+    }
+
+    &.loading {
+        animation: spin 1s linear infinite;
+        color: #3b82f6;
+    }
+
+    &:disabled {
+        cursor: not-allowed;
+        opacity: 0.5;
+    }
+
+    svg {
+        width: 12px;
+        height: 12px;
+    }
+}
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.inputWrapper {
+    position: relative;
+    flex-grow: 1;
+    max-width: 60%;
+    text-align: right;
+}
+.inputWrapper .paramInput {
+    max-width: 100%;
+    width: 100%;
+    box-sizing: border-box;
+    user-select: none; // 드래그 방지
+}
+
+.expandableWrapper {
+    position: relative;
+    flex-grow: 1;
+    max-width: 60%;
+    text-align: right;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.expandableWrapper .paramInput {
+    flex: 1;
+    max-width: calc(100% - 28px);
+    box-sizing: border-box;
+    user-select: none;
+}
+
+.expandButton {
+    background: #f3f4f6;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 12px;
+    color: #6b7280;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+
+    &:hover {
+        background: #e5e7eb;
+        border-color: #9ca3af;
+        color: #374151;
+    }
+
+    &:active {
+        background: #d1d5db;
+    }
+}
+
+.paramValue {
+    color: #111827;
+    font-weight: 500;
+    background-color: #f3f4f6;
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-size: 0.8rem;
+}
+
+.paramInput {
+    flex-grow: 1;
+    max-width: 60%;
+    background-color: #f3f4f6;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: #111827;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    text-align: right;
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    -webkit-user-drag: none;
+    -khtml-user-drag: none;
+    -moz-user-drag: none;
+    -o-user-drag: none;
+
+    &:focus {
+        background-color: #fff;
+        border-color: #3b82f6;
+        box-shadow: 0 0 0 1px #3b82f6;
+    }
+}
+
+// --- [새로운 스타일] 파라미터 선택 필드 (옵션이 있는 경우) ---
+.paramSelect {
+    flex-grow: 1;
+    max-width: 60%;
+    background-color: #f3f4f6;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: #111827;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    text-align: right;
+    cursor: pointer;
+    position: relative; // z-index 문제 방지
+    z-index: 1; // 기본 z-index 설정
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    -webkit-user-drag: none;
+    -khtml-user-drag: none;
+    -moz-user-drag: none;
+    -o-user-drag: none;
+
+    &:focus {
+        background-color: #fff;
+        border-color: #3b82f6;
+        box-shadow: 0 0 0 1px #3b82f6;
+        z-index: 1000; // focus 시 최상위로
+    }
+
+    &:hover {
+        background-color: #e5e7eb;
+    }
+}
+
+// --- Advanced Parameters Styles ---
+.advancedParams {
+    margin-top: 8px;
+    border-top: 1px solid #e5e7eb;
+    padding-top: 8px;
+}
+
+.advancedHeader {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px 12px;
+    background-color: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: #64748b;
+    transition: all 0.2s ease;
+    margin-bottom: 8px;
+
+    &:hover {
+        background-color: #f1f5f9;
+        border-color: #cbd5e1;
+        color: #475569;
+    }
+
+    span {
+        user-select: none;
+    }
+}
+
+.inputError {
+    border-color: #d9534f;
+}
+
+.inputError:focus {
+    border-color: #d9534f;
+}
+
+.errorMessage {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 10;
+    margin-top: 4px;
+    width: 100%;
+    padding: 10px 12px;
+    background-color: rgba(45, 45, 45, 0.95);
+    color: white;
+    font-size: 13px;
+    border-radius: 5px;
+    line-height: 1.4;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    box-sizing: border-box;
+    white-space: pre-wrap;
+
+    text-align: start;
+
+    animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-5px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.doubleInputWrapper {
+    display: flex;
+    justify-content: flex-end;
+    gap: 5px;
+    width: 100%;
+
+    select {
+        margin-top: 4px;
+        max-width: 30%;
+        box-sizing: border-box;
+        user-select: none; // 드래그 방지
+        padding: 0;
+    }
+}
