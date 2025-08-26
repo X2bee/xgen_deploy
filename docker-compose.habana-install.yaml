@@ -64,24 +64,27 @@ services:
       - ./qdrant_data:/qdrant/storage
 
   vllm:
-    image: rocm/vllm:latest
+    image: vault.habana.ai/gaudi-docker/1.18.0/ubuntu22.04/habanalabs/pytorch-installer-2.6.0:latest
     restart: unless-stopped
     container_name: xgen_vllm
     env_file: .env
     ipc: "host"
+    stdin_open: true
+    tty: true
+    cap_add:
+      - SYS_NICE
     environment:
-      HSA_OVERRIDE_GFX_VERSION: "11.0.0"
-      AMD_SERIALIZE_KERNEL: "3"
-      VLLM_USE_TRITON_FLASH_ATTN: "0"
+      HABANA_VISIBLE_DEVICES: "all"
+      OMPI_MCA_btl_vader_single_copy_mechanism: "none"
+      HUGGINGFACE_HUB_CACHE: "/hf_cache"
+      HF_TOKEN: ""
     ports:
       - ${VLLM_PORT}:${VLLM_PORT}
       - ${VLLM_CONTROLLER_PORT}:${VLLM_CONTROLLER_PORT}
     expose:
       - ${VLLM_PORT}
       - ${VLLM_CONTROLLER_PORT}
-    devices:
-      - "/dev/kfd:/dev/kfd"
-      - "/dev/dri:/dev/dri"
+    runtime: "habana"
     entrypoint: ["/vllm/entrypoint.sh"]
     volumes:
       - ./vllm:/vllm
