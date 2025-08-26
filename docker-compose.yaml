@@ -15,7 +15,7 @@ services:
 
   xgen_backend:
     container_name: xgen_backend
-    image: cocorof/xgen-backend:v1.0.3
+    image: cocorof/xgen-backend:v1.1.0
     env_file: .env
     volumes:
       - ./backend/web_entrypoint.sh:/entrypoint.sh
