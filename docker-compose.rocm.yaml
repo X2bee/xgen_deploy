@@ -1,0 +1,95 @@
+services:
+  postgres:
+    image: postgres:15.4
+    container_name: xgen_postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres-init:/docker-entrypoint-initdb.d
+    ports:
+      - ${POSTGRES_PORT}:${POSTGRES_PORT}
+    restart: unless-stopped
+
+  xgen_backend:
+    container_name: xgen_backend
+    image: cocorof/xgen-backend:v1.1.0
+    env_file: .env
+    volumes:
+      - ./backend/web_entrypoint.sh:/entrypoint.sh
+    command: [ "bash", "/entrypoint.sh" ]
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
+    ports:
+      - ${NEXT_PUBLIC_BACKEND_PORT}:${NEXT_PUBLIC_BACKEND_PORT}
+    depends_on:
+      - xgen_frontend
+
+  xgen_frontend:
+    container_name: xgen_frontend
+    environment:
+      - NEXT_PUBLIC_PORT=${NEXT_PUBLIC_PORT}
+      - NEXT_PUBLIC_BACKEND_HOST=${NEXT_PUBLIC_BACKEND_HOST}
+      - NEXT_PUBLIC_BACKEND_PORT=${NEXT_PUBLIC_BACKEND_PORT}
+      - NEXT_PUBLIC_METRICS_HOST=${NEXT_PUBLIC_METRICS_HOST}
+    build: ./frontend/.
+    volumes:
+      - ./frontend/web_front_entrypoint.sh:/entrypoint.sh
+      - ./frontend/xgen_front:/home/xgen_front
+    command: [ "sh", "-c", "bash /entrypoint.sh" ]
+    restart: unless-stopped
+    ports:
+      - ${NEXT_PUBLIC_PORT}:${NEXT_PUBLIC_PORT}
+    depends_on:
+      - postgres
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    restart: unless-stopped
+    container_name: xgen_qdrant
+    ports:
+      - ${QDRANT_HTTP_PORT}:${QDRANT_HTTP_PORT}
+      - ${QDRANT_GRPC_PORT}:${QDRANT_GRPC_PORT}
+    expose:
+      - ${QDRANT_HTTP_PORT}
+      - ${QDRANT_GRPC_PORT}
+      - 6335
+    configs:
+      - source: qdrant_config
+        target: ${QDRANT_CONFIG_PATH}
+    volumes:
+      - ./qdrant_data:/qdrant/storage
+
+  vllm:
+    image: rocm/vllm:latest
+    restart: unless-stopped
+    container_name: xgen_vllm
+    env_file: .env
+    environment:
+      HSA_OVERRIDE_GFX_VERSION: "11.0.0"
+      AMD_SERIALIZE_KERNEL: "3"
+      VLLM_USE_TRITON_FLASH_ATTN: "0"
+    ports:
+      - ${VLLM_PORT}:${VLLM_PORT}
+      - ${VLLM_CONTROLLER_PORT}:${VLLM_CONTROLLER_PORT}
+    expose:
+      - ${VLLM_PORT}
+      - ${VLLM_CONTROLLER_PORT}
+    devices:
+      - "/dev/kfd:/dev/kfd"
+      - "/dev/dri:/dev/dri"
+    entrypoint: ["/vllm/entrypoint.sh"]
+    volumes:
+      - ./vllm:/vllm
+    depends_on:
+      - xgen_backend
+volumes:
+  postgres_data:
+
+configs:
+  qdrant_config:
+    content: |
+      log_level: INFO
