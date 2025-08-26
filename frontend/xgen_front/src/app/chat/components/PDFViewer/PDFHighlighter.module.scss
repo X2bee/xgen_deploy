@@ -1,0 +1,57 @@
+// 텍스트 span 요소에 직접 적용되는 하이라이트 스타일
+.pdfHighlight {
+  background: rgba(255, 255, 0, 0.4) !important;
+  border-radius: 2px !important;
+  box-shadow: 0 0 0 1px rgba(255, 193, 7, 0.6) !important;
+  animation: highlightPulse 2s ease-in-out infinite !important;
+  transition: all 0.3s ease !important;
+}
+
+// 이미지나 테이블 요소용 (필요한 경우)
+.pdfHighlightImage {
+  background: rgba(99, 102, 241, 0.3) !important;
+  border-radius: 4px !important;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.6) !important;
+  animation: highlightPulseImage 2s ease-in-out infinite !important;
+}
+
+.pdfHighlightTable {
+  background: rgba(34, 197, 94, 0.3) !important;
+  border-radius: 4px !important;
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.6) !important;
+  animation: highlightPulseTable 2s ease-in-out infinite !important;
+}
+
+// 애니메이션들
+@keyframes highlightPulse {
+  0%, 100% {
+    background: rgba(255, 255, 0, 0.4) !important;
+    box-shadow: 0 0 0 1px rgba(255, 193, 7, 0.6) !important;
+  }
+  50% {
+    background: rgba(255, 255, 0, 0.6) !important;
+    box-shadow: 0 0 0 1px rgba(255, 193, 7, 0.8), 0 0 8px rgba(255, 193, 7, 0.3) !important;
+  }
+}
+
+@keyframes highlightPulseImage {
+  0%, 100% {
+    background: rgba(99, 102, 241, 0.3) !important;
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.6) !important;
+  }
+  50% {
+    background: rgba(99, 102, 241, 0.5) !important;
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.8), 0 0 12px rgba(99, 102, 241, 0.4) !important;
+  }
+}
+
+@keyframes highlightPulseTable {
+  0%, 100% {
+    background: rgba(34, 197, 94, 0.3) !important;
+    box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.6) !important;
+  }
+  50% {
+    background: rgba(34, 197, 94, 0.5) !important;
+    box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.8), 0 0 12px rgba(34, 197, 94, 0.4) !important;
+  }
+}

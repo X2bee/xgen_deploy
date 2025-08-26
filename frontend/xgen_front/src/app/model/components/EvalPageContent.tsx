@@ -15,6 +15,7 @@ import EvaluationTable from '@/app/model/components/Eval/EvaluationTable';
 import ModelStorageModal from '@/app/model/components/Train/ModelStorageModal'; // 추가
 
 import styles from '@/app/model/assets/Eval.module.scss';
+import useSidebarManager from '@/app/_common/hooks/useSidebarManager';
 
 export const DEFAULT_TASKS = [
     'global_mmlu_ko', 
@@ -123,6 +124,8 @@ const Evaluation = () => {
       }, delay);
     }
   }, []);
+
+  useSidebarManager(isModelStorageModalOpen||showTaskSelector||showJobDetails)
 
   // 평가 작업 필터링
   useEffect(() => {
@@ -440,7 +443,7 @@ const Evaluation = () => {
       await new Promise(resolve => setTimeout(resolve, 2000));
       
       // 가짜 Job ID 생성
-      const fakeJobId = `fake-job-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const fakeJobId = `job-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       
       // 가짜 작업을 evalJobs에 추가 (계속 running 상태로 유지)
       const fakeJob = {

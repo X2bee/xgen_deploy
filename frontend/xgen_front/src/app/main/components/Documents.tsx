@@ -1,7 +1,7 @@
 'use client';
 import React, { useState, useEffect, useRef } from 'react';
 import styles from '../assets/Documents.module.scss';
-import { usePagesLayout } from '@/app/_common/components/PagesLayoutContent';
+import DocumentsGraph from './DocumentsGraph';
 
 import {
     isValidCollectionName,
@@ -15,7 +15,12 @@ import {
     listDocumentsInCollection,
     getDocumentDetails,
     deleteDocumentFromCollection,
+    getDocumentDetailMeta,
+    getDocumentDetailEdges,
+    getAllDocumentDetailMeta,
+    getAllDocumentDetailEdges
 } from '@/app/api/retrievalAPI';
+import useSidebarManager from '@/app/_common/hooks/useSidebarManager';
 
 interface Collection {
     collection_name: string;
@@ -96,11 +101,9 @@ interface SearchResponse {
     search_params: any;
 }
 
-type ViewMode = 'collections' | 'documents' | 'document-detail';
+type ViewMode = 'collections' | 'documents' | 'documents-graph' | 'document-detail' | 'all-documents-graph';
 
 const Documents: React.FC = () => {
-    const layoutContext = usePagesLayout();
-    const sidebarWasOpenRef = useRef<boolean | null>(null);
 
     const [viewMode, setViewMode] = useState<ViewMode>('collections');
     const [collections, setCollections] = useState<Collection[]>([]);
@@ -112,10 +115,26 @@ const Documents: React.FC = () => {
     const [searchQuery, setSearchQuery] = useState('');
     const [isSearching, setIsSearching] = useState(false);
     const [uploadProgress, setUploadProgress] = useState<UploadProgress[]>([]);
+    const [processType, setProcessType] = useState<string>('default');
+
+
+    // 청크 설정 상태
+    const [chunkSize, setChunkSize] = useState(4000);
+    const [overlapSize, setOverlapSize] = useState(1000);
+
+    // Graph 데이터 상태
+    const [documentDetailMeta, setDocumentDetailMeta] = useState<any>(null);
+    const [documentDetailEdges, setDocumentDetailEdges] = useState<any>(null);
+
+    // Graph 데이터 상태
+    const [allDocumentDetailMeta, setAllDocumentDetailMeta] = useState<any>(null);
+    const [allDocumentDetailEdges, setAllDocumentDetailEdges] = useState<any>(null);
 
     // 모달 상태
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [showDeleteModal, setShowDeleteModal] = useState(false);
+    const [showChunkSettingsModal, setShowChunkSettingsModal] = useState(false);
+    const [isFolderUpload, setIsFolderUpload] = useState(false);
     const [collectionToDelete, setCollectionToDelete] = useState<Collection | null>(null);
 
     // 폼 상태
@@ -126,27 +145,7 @@ const Documents: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    const isAnyModalOpen = showCreateModal || showDeleteModal;
-
-    useEffect(() => {
-        if (layoutContext) {
-            const { isSidebarOpen, setIsSidebarOpen } = layoutContext;
-            if (isAnyModalOpen) {
-                if (sidebarWasOpenRef.current === null) {
-                    sidebarWasOpenRef.current = isSidebarOpen;
-                    if (isSidebarOpen) {
-                        setIsSidebarOpen(false);
-                    }
-                }
-            } else {
-                if (sidebarWasOpenRef.current === true) {
-                    setIsSidebarOpen(true);
-                }
-                sidebarWasOpenRef.current = null;
-            }
-        }
-    }, [isAnyModalOpen, layoutContext]);
-
+    useSidebarManager(showCreateModal || showDeleteModal || showChunkSettingsModal)
 
     // 컬렉션 목록 로드
     useEffect(() => {
@@ -346,10 +345,16 @@ const Documents: React.FC = () => {
             setDocumentDetails(null);
             setSearchQuery('');
             setSearchResults([]);
+        } else if (viewMode === 'documents-graph') {
+            setViewMode('documents');
+            setDocumentDetailMeta(null);
+            setDocumentDetailEdges(null);
         } else if (viewMode === 'documents') {
             setViewMode('collections');
             setSelectedCollection(null);
             setDocumentsInCollection([]);
+        } else if (viewMode === 'all-documents-graph') {
+            setViewMode('collections');
         }
     };
 
@@ -359,7 +364,7 @@ const Documents: React.FC = () => {
             setError('컬렉션을 먼저 선택해주세요.');
             return;
         }
-
+    
         const fileArray = Array.from(files);
         const initialProgress: UploadProgress[] = fileArray.map(file => ({
             fileName: file.name,
@@ -367,61 +372,63 @@ const Documents: React.FC = () => {
             progress: 0
         }));
         setUploadProgress(initialProgress);
-
+    
         try {
             // 폴더 업로드의 경우 순차 처리
             if (isFolder) {
                 let successful = 0;
                 let failed = 0;
-
+    
                 // 순차적으로 파일 업로드
                 for (let index = 0; index < fileArray.length; index++) {
                     const file = fileArray[index];
-                    
+    
                     try {
                         // 진행 상태 업데이트 (시작)
                         setUploadProgress(prev => prev.map((item, idx) =>
                             idx === index ? { ...item, progress: 10 } : item
                         ));
-
+    
                         // 폴더 경로 정보를 메타데이터에 포함
                         const relativePath = file.webkitRelativePath || file.name;
                         const folderPath = relativePath.substring(0, relativePath.lastIndexOf('/')) || '';
-                        
+    
                         const metadata = {
                             upload_type: 'folder',
                             folder_path: folderPath,
                             relative_path: relativePath,
                             original_name: file.name,
                             current_index: index + 1,
-                            total_files: fileArray.length
+                            total_files: fileArray.length,
+                            process_type: processType
                         };
-
+    
                         // 진행 상태 업데이트 (업로드 중)
                         setUploadProgress(prev => prev.map((item, idx) =>
                             idx === index ? { ...item, progress: 50 } : item
                         ));
-
+    
                         await uploadDocument(
                             file,
                             selectedCollection.collection_name,
-                            2000,
-                            300,
-                            metadata
+                            chunkSize,
+                            overlapSize,
+                            metadata,
+                            processType
                         );
-
+    
                         // 성공 시 진행 상태 업데이트
                         setUploadProgress(prev => prev.map((item, idx) =>
                             idx === index ? { ...item, status: 'success', progress: 100 } : item
                         ));
-
+    
                         successful++;
-
+    
                         // 파일 업로드 성공 시 즉시 문서 목록 새로고침
                         if (selectedCollection) {
                             loadDocumentsInCollection(selectedCollection.collection_name);
                         }
-                        
+    
                     } catch (error) {
                         // 실패 시 진행 상태 업데이트
                         setUploadProgress(prev => prev.map((item, idx) =>
@@ -432,24 +439,24 @@ const Documents: React.FC = () => {
                                 error: error instanceof Error ? error.message : '업로드 실패'
                             } : item
                         ));
-                        
+    
                         console.error(`Failed to upload file ${file.name}:`, error);
                         failed++;
                     }
-
+    
                     // 잠시 대기 (서버 부하 방지)
                     if (index < fileArray.length - 1) {
                         await new Promise(resolve => setTimeout(resolve, 100));
                     }
                 }
-                
+    
                 // 결과 통계 표시
                 if (failed > 0) {
                     setError(`${successful}개 파일 업로드 성공, ${failed}개 파일 실패`);
                 } else {
                     setError(null);
                 }
-
+    
             } else {
                 // 단일 파일 업로드
                 const file = fileArray[0];
@@ -457,19 +464,23 @@ const Documents: React.FC = () => {
                     setUploadProgress(prev => prev.map((item, index) =>
                         index === 0 ? { ...item, progress: 50 } : item
                     ));
-
+    
                     await uploadDocument(
                         file,
                         selectedCollection.collection_name,
-                        2000,
-                        300,
-                        { upload_type: 'single' }
+                        chunkSize,
+                        overlapSize,
+                        { 
+                            upload_type: 'single',
+                            process_type: processType
+                        },
+                        processType
                     );
-
+    
                     setUploadProgress(prev => prev.map((item, index) =>
                         index === 0 ? { ...item, status: 'success', progress: 100 } : item
                     ));
-
+    
                     // 단일 파일 업로드 성공 시 즉시 문서 목록 새로고침
                     if (selectedCollection) {
                         loadDocumentsInCollection(selectedCollection.collection_name);
@@ -487,38 +498,141 @@ const Documents: React.FC = () => {
                     setError('파일 업로드에 실패했습니다.');
                 }
             }
-
+    
         } catch (error) {
             console.error('Upload process failed:', error);
             setError('업로드 처리 중 오류가 발생했습니다.');
         }
-
+    
         // 업로드 완료 후 진행 상태 정리
         setTimeout(() => {
             setUploadProgress([]);
+            setProcessType('default'); // processType 초기화 추가
         }, 3000); // 3초 후 업로드 진행 상태 숨김
     };
 
     const handleSingleFileUpload = () => {
+        setIsFolderUpload(false);
+        setShowChunkSettingsModal(true);
+    };
+
+    const handleFolderUpload = () => {
+        setIsFolderUpload(true);
+        setShowChunkSettingsModal(true);
+    };
+
+    const handleConfirmChunkSettings = () => {
+        setShowChunkSettingsModal(false);
         const input = document.createElement('input');
         input.type = 'file';
+
+        if (isFolderUpload) {
+            input.webkitdirectory = true;
+            input.multiple = true;
+        }
+
         input.onchange = (e) => {
             const files = (e.target as HTMLInputElement).files;
-            if (files) handleFileUpload(files, false);
+            if (files) handleFileUpload(files, isFolderUpload);
         };
         input.click();
     };
 
-    const handleFolderUpload = () => {
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.webkitdirectory = true;
-        input.multiple = true;
-        input.onchange = (e) => {
-            const files = (e.target as HTMLInputElement).files;
-            if (files) handleFileUpload(files, true);
-        };
-        input.click();
+    // 문서 메타데이터 조회
+    const handleGetDocumentDetailMeta = async () => {
+        if (!selectedCollection) {
+            setError('컬렉션이 선택되지 않았습니다.');
+            return;
+        }
+
+        try {
+            setLoading(true);
+            setError(null);
+            const response = await getDocumentDetailMeta(selectedCollection.collection_name);
+            console.log('Document detail meta:', response);
+            setDocumentDetailMeta(response);
+        } catch (err) {
+            setError('문서 메타데이터를 불러오는데 실패했습니다.');
+            console.error('Failed to get document detail meta:', err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // 문서 메타데이터 조회
+    const handleGetDocumentDetailEdges = async () => {
+        if (!selectedCollection) {
+            setError('컬렉션이 선택되지 않았습니다.');
+            return;
+        }
+
+        try {
+            setLoading(true);
+            setError(null);
+            const response = await getDocumentDetailEdges(selectedCollection.collection_name);
+            console.log('Document detail edges:', response);
+            setDocumentDetailEdges(response);
+        } catch (err) {
+            setError('문서 메타데이터를 불러오는데 실패했습니다.');
+            console.error('Failed to get document detail edges:', err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // 문서 메타데이터 조회
+    const handleGetAllDocumentDetailMeta = async () => {
+        if (allDocumentDetailMeta) {
+            return;
+        }
+        try {
+            setLoading(true);
+            setError(null);
+            const response = await getAllDocumentDetailMeta();
+            console.log('Document detail meta:', response);
+            setAllDocumentDetailMeta(response);
+        } catch (err) {
+            setError('문서 메타데이터를 불러오는데 실패했습니다.');
+            console.error('Failed to get document detail meta:', err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // 문서 메타데이터 조회
+    const handleGetAllDocumentDetailEdges = async () => {
+        if (allDocumentDetailEdges) {
+            return;
+        }
+        try {
+            setLoading(true);
+            setError(null);
+            const response = await getAllDocumentDetailEdges();
+            console.log('Document detail edges:', response);
+            setAllDocumentDetailEdges(response);
+        } catch (err) {
+            setError('문서 메타데이터를 불러오는데 실패했습니다.');
+            console.error('Failed to get document detail edges:', err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // 그래프 뷰로 전환 시 메타데이터 로드
+    const handleSwitchToGraphView = async () => {
+        setViewMode('documents-graph');
+        await Promise.all([
+            handleGetDocumentDetailMeta(),
+            handleGetDocumentDetailEdges()
+        ]);
+    };
+
+    const handleSwitchToAllGraphView = async () => {
+        setViewMode('all-documents-graph');
+        await Promise.all([
+            handleGetAllDocumentDetailMeta(),
+            handleGetAllDocumentDetailEdges()
+        ]);
     };
 
     return (
@@ -534,17 +648,39 @@ const Documents: React.FC = () => {
                     <h2>
                         {viewMode === 'collections' && '컬렉션 관리'}
                         {viewMode === 'documents' && `${selectedCollection?.collection_make_name} - 문서 목록`}
+                        {viewMode === 'documents-graph' && `${selectedCollection?.collection_make_name} - 문서 그래프`}
                         {viewMode === 'document-detail' && `${selectedDocument?.file_name} - 문서 상세`}
                     </h2>
                 </div>
                 <div className={styles.headerRight}>
                     {viewMode === 'collections' && (
-                        <button onClick={() => setShowCreateModal(true)} className={`${styles.button} ${styles.primary}`}>
-                            새 컬렉션 생성
-                        </button>
+                        <>
+                            <button onClick={handleSwitchToAllGraphView} className={`${styles.button} ${styles.secondary}`}>
+                                모든 그래프 보기
+                            </button>
+                            <button onClick={() => setShowCreateModal(true)} className={`${styles.button} ${styles.primary}`}>
+                                새 컬렉션 생성
+                            </button>
+                        </>
                     )}
                     {viewMode === 'documents' && (
                         <>
+                            <button onClick={handleSwitchToGraphView} className={`${styles.button} ${styles.secondary}`}>
+                                그래프 보기
+                            </button>
+                            <button onClick={handleSingleFileUpload} className={`${styles.button} ${styles.primary}`}>
+                                단일 문서 업로드
+                            </button>
+                            <button onClick={handleFolderUpload} className={`${styles.button} ${styles.primary}`}>
+                                폴더 업로드
+                            </button>
+                        </>
+                    )}
+                    {viewMode === 'documents-graph' && (
+                        <>
+                            <button onClick={() => setViewMode('documents')} className={`${styles.button} ${styles.secondary}`}>
+                                목록 보기
+                            </button>
                             <button onClick={handleSingleFileUpload} className={`${styles.button} ${styles.primary}`}>
                                 단일 문서 업로드
                             </button>
@@ -634,7 +770,7 @@ const Documents: React.FC = () => {
                                         <div className={styles.progressStatus}>
                                             {item.status === 'uploading' && (
                                                 <div className={styles.progressBar}>
-                                                    <div 
+                                                    <div
                                                         className={styles.progressFill}
                                                         style={{ width: `${item.progress}%` }}
                                                     ></div>
@@ -780,6 +916,98 @@ const Documents: React.FC = () => {
                 </div>
             )}
 
+            {/* 문서 그래프 보기 */}
+            {viewMode === 'documents-graph' && (
+                <DocumentsGraph
+                    loading={loading}
+                    documentDetailMeta={documentDetailMeta}
+                    documentDetailEdges={documentDetailEdges}
+                />
+            )}
+
+            {viewMode === 'all-documents-graph' && (
+                <DocumentsGraph
+                    loading={loading}
+                    documentDetailMeta={allDocumentDetailMeta}
+                    documentDetailEdges={allDocumentDetailEdges}
+                />
+            )}
+
+            {showChunkSettingsModal && (
+                <div className={styles.modalBackdrop} onClick={() => setShowChunkSettingsModal(false)}>
+                    <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+                        <h3>{isFolderUpload ? '폴더 업로드 설정' : '단일 파일 업로드 설정'}</h3>
+                        
+                        {/* 청크 설정 */}
+                        <div className={styles.formGroup}>
+                            <label>청크 사이즈</label>
+                            <input
+                                type="number"
+                                value={chunkSize}
+                                onChange={(e) => setChunkSize(Number(e.target.value))}
+                                placeholder="4000"
+                                min="100"
+                                max="65000"
+                            />
+                        </div>
+                        <div className={styles.formGroup}>
+                            <label>오버랩 사이즈</label>
+                            <input
+                                type="number"
+                                value={overlapSize}
+                                onChange={(e) => setOverlapSize(Number(e.target.value))}
+                                placeholder="1000"
+                                min="0"
+                                max="65000"
+                            />
+                        </div>
+                        
+                        {/* 처리 방식 선택 */}
+                        <div className={styles.formGroup}>
+                            <label>문서 처리 방식 (PDF/DOCX 파일에만 적용)</label>
+                            <select
+                                value={processType}
+                                onChange={(e) => setProcessType(e.target.value)}
+                                className={styles.selectInput}
+                            >
+                                <option value="default">자동 선택 (기본값)</option>
+                                <option value="text">텍스트 추출 (PDF/DOCX 공통)</option>
+                                <option value="ocr">OCR 처리 (PDF/DOCX 공통)</option>
+                                <option value="html">HTML 변환 (DOCX 전용)</option>
+                                <option value="html_pdf_ocr">HTML+PDF OCR (DOCX 전용)</option>
+                            </select>
+                            <div className={styles.helpText}>
+                                <small>
+                                    • <strong>자동 선택:</strong> 시스템이 최적의 방식을 자동으로 선택<br/>
+                                    • <strong>텍스트 추출:</strong> OCR 없이 기계적 텍스트 추출만 사용<br/>
+                                    • <strong>OCR 처리:</strong> 이미지 OCR을 강제로 사용<br/>
+                                    • <strong>HTML 변환:</strong> DOCX를 HTML로 변환 후 처리 (DOCX만)<br/>
+                                    • <strong>HTML+PDF OCR:</strong> HTML 참조 + PDF OCR 복합 방식 (DOCX만)
+                                </small>
+                            </div>
+                        </div>
+                        
+                        <div className={styles.modalActions}>
+                            <button
+                                onClick={() => {
+                                    setShowChunkSettingsModal(false);
+                                    setProcessType('default'); // 모달 닫을 때 초기화
+                                }}
+                                className={`${styles.button} ${styles.secondary}`}
+                            >
+                                취소
+                            </button>
+                            <button
+                                onClick={handleConfirmChunkSettings}
+                                className={`${styles.button} ${styles.primary}`}
+                            >
+                                설정 완료
+                            </button>
+                        </div>
+                    </div>
+                </div>
+)}
+
             {/* 컬렉션 생성 모달 */}
             {showCreateModal && (
                 <div className={styles.modalBackdrop} onClick={() => setShowCreateModal(false)}>
@@ -803,15 +1031,15 @@ const Documents: React.FC = () => {
                             />
                         </div>
                         <div className={styles.modalActions}>
-                            <button 
-                                onClick={() => setShowCreateModal(false)} 
+                            <button
+                                onClick={() => setShowCreateModal(false)}
                                 className={`${styles.button} ${styles.secondary}`}
                                 disabled={loading}
                             >
                                 취소
                             </button>
-                            <button 
-                                onClick={handleCreateCollection} 
+                            <button
+                                onClick={handleCreateCollection}
                                 className={`${styles.button} ${styles.primary}`}
                                 disabled={loading}
                             >
@@ -828,7 +1056,7 @@ const Documents: React.FC = () => {
                     <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
                         <h3>컬렉션 삭제 확인</h3>
                         <p>
-                            '<strong>{collectionToDelete.collection_make_name}</strong>' 컬렉션을 정말로 삭제하시겠습니까?<br/>
+                            '<strong>{collectionToDelete.collection_make_name}</strong>' 컬렉션을 정말로 삭제하시겠습니까?<br />
                             이 작업은 되돌릴 수 없으며, 컬렉션에 포함된 모든 문서가 삭제됩니다.
                         </p>
                         <div className={styles.modalActions}>

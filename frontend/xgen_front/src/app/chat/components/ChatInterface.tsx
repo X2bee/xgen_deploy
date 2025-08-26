@@ -1,7 +1,7 @@
 'use client';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { usePagesLayout } from '@/app/_common/components/PagesLayoutContent';
+import { useSidebarManager } from '@/app/_common/hooks/useSidebarManager';
 import {
     FiSend,
     FiPlus,
@@ -27,6 +27,15 @@ import { devLog } from '@/app/_common/utils/logger';
 import { isStreamingWorkflowFromWorkflow } from '@/app/_common/utils/isStreamingWorkflow';
 import { WorkflowData } from '@/app/canvas/types';
 import { executeWorkflowByIdDeploy, executeWorkflowByIdStreamDeploy } from '@/app/api/workflow/workflowDeployAPI';
+import { SourceInfo } from '../types/source';
+import dynamic from 'next/dynamic';
+import ResizablePanel from './ResizablePanel';
+
+// Dynamic import to prevent SSR issues with PDF components
+const SidePanelPDFViewer = dynamic(() => import('./PDFViewer/SidePanelPDFViewer'), {
+  ssr: false,
+  loading: () => <div style={{ padding: '20px', textAlign: 'center' }}>PDF 뷰어를 로드하는 중...</div>
+});
 
 interface NewChatInterfaceProps extends ChatInterfaceProps {
     onStartNewChat?: (message: string) => void;
@@ -45,9 +54,7 @@ const ChatInterface: React.FC<NewChatInterfaceProps> = (
         initialMessageToExecute,
         user_id,
     }) => {
-    const layoutContext = usePagesLayout();
     const router = useRouter();
-    const sidebarWasOpenRef = useRef<boolean | null>(null);
 
     const [ioLogs, setIOLogs] = useState<IOLog[]>([]);
     const [loading, setLoading] = useState(false);
@@ -63,13 +70,61 @@ const ChatInterface: React.FC<NewChatInterfaceProps> = (
     const [showDeploymentModal, setShowDeploymentModal] = useState(false);
     const [workflowContentDetail, setWorkflowContentDetail] = useState<WorkflowData | null>(null);
     const [additionalParams, setAdditionalParams] = useState<Record<string, Record<string, any>>>({});
+    const [showPDFViewer, setShowPDFViewer] = useState(false);
+    const [currentSourceInfo, setCurrentSourceInfo] = useState<SourceInfo | null>(null);
+    const [panelSplit, setPanelSplit] = useState(() => {
+        // localStorage에서 저장된 패널 크기 불러오기
+        if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem('chatPanelSplit');
+            return saved ? parseFloat(saved) : 65;
+        }
+        return 65;
+    });
+    const [scrollPosition, setScrollPosition] = useState(0);
+    const [isUserScrolling, setIsUserScrolling] = useState(false);
+    const [isResizing, setIsResizing] = useState(false);
+    const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+    // showPDFViewer가 false일 때 패널 크기를 100%로 설정
+    useEffect(() => {
+        if (!showPDFViewer) {
+            setPanelSplit(100);
+            localStorage.setItem('chatPanelSplit', '100');
+        }
+    }, [showPDFViewer]);
 
     const hasExecutedInitialMessage = useRef(false);
 
     const messagesRef = useRef<HTMLDivElement>(null);
     const attachmentButtonRef = useRef<HTMLDivElement>(null);
 
-    const isAnyModalOpen = showDeploymentModal || showCollectionModal;
+    useSidebarManager(showDeploymentModal || showCollectionModal);
+
+    const handleViewSource = (sourceInfo: SourceInfo, messageContent?: string) => {
+        // 스크롤 위치 저장 (사용자가 스크롤 중이 아닐 때만)
+        if (!isUserScrolling) {
+            saveScrollPosition();
+        }
+        
+        // 답변 내용을 sourceInfo에 추가
+        const enrichedSourceInfo = {
+            ...sourceInfo,
+            response_content: messageContent || sourceInfo.response_content
+        };
+        
+        setCurrentSourceInfo(enrichedSourceInfo);
+        setShowPDFViewer(true);
+        // 출처 뷰어가 켜질 때 패널 크기를 적절히 조정 (65% 채팅, 35% 출처)
+        setPanelSplit(65);
+        localStorage.setItem('chatPanelSplit', '65');
+        
+        // 스크롤 위치 복원 (DOM 렌더링 후, 사용자가 스크롤 중이 아닐 때만)
+        setTimeout(() => {
+            if (!isUserScrolling) {
+                restoreScrollPosition();
+            }
+        }, 150);
+    };
 
     // additionalParams에서 유효한 값만 필터링하는 함수
     const getValidAdditionalParams = useCallback(() => {
@@ -98,6 +153,44 @@ const ChatInterface: React.FC<NewChatInterfaceProps> = (
         return Object.keys(validParams).length > 0 ? validParams : null;
     }, [additionalParams]);
 
+    // 사용자 스크롤 감지 함수
+    const handleUserScroll = useCallback(() => {
+        if (!isResizing) {
+            setIsUserScrolling(true);
+            
+            // 스크롤 정지 감지
+            if (scrollTimeoutRef.current) {
+                clearTimeout(scrollTimeoutRef.current);
+            }
+            
+            scrollTimeoutRef.current = setTimeout(() => {
+                setIsUserScrolling(false);
+                // 스크롤이 정지된 후 현재 위치를 저장
+                if (messagesRef.current) {
+                    setScrollPosition(messagesRef.current.scrollTop);
+                }
+            }, 150);
+        }
+    }, [isResizing]);
+
+    // 스크롤 위치 저장 함수 (조건부)
+    const saveScrollPosition = useCallback(() => {
+        if (messagesRef.current && !isUserScrolling) {
+            setScrollPosition(messagesRef.current.scrollTop);
+        }
+    }, [isUserScrolling]);
+
+    // 스크롤 위치 복원 함수 (조건부)
+    const restoreScrollPosition = useCallback(() => {
+        if (messagesRef.current && scrollPosition > 0 && !isUserScrolling && !isResizing) {
+            requestAnimationFrame(() => {
+                if (messagesRef.current && !isUserScrolling) {
+                    messagesRef.current.scrollTop = scrollPosition;
+                }
+            });
+        }
+    }, [scrollPosition, isUserScrolling, isResizing]);
+
     // 강화된 스크롤 함수
     const scrollToBottom = useCallback(() => {
         if (messagesRef.current) {
@@ -119,33 +212,15 @@ const ChatInterface: React.FC<NewChatInterfaceProps> = (
         }
     }, []);
 
-    useEffect(() => {
-        if (layoutContext) {
-            const { isSidebarOpen, setIsSidebarOpen } = layoutContext;
-            if (isAnyModalOpen) {
-                if (sidebarWasOpenRef.current === null) {
-                    sidebarWasOpenRef.current = isSidebarOpen;
-                    if (isSidebarOpen) {
-                        setIsSidebarOpen(false);
-                    }
-                }
-            } else {
-                if (sidebarWasOpenRef.current === true) {
-                    setIsSidebarOpen(true);
-                }
-                sidebarWasOpenRef.current = null;
-            }
-        }
-    }, [isAnyModalOpen, layoutContext]);
-
     // workflow 데이터 로드
     useEffect(() => {
-        if (workflow && workflow.id) {
+        if (workflow && workflow.id && workflow.id !== "default_mode") {
             const loadWorkflowContent = async () => {
                 if (user_id) {
                     try {
                         const workflowData = await loadWorkflowDeploy(workflow.name, user_id);
                         setWorkflowContentDetail(workflowData);
+                        localStorage.setItem('workflowContentDetail', JSON.stringify(workflowData));
                         devLog.log('Successfully loaded workflow content detail:', workflowData);
                     } catch (error) {
                         devLog.error('Failed to load workflow content detail:', error);
@@ -154,6 +229,7 @@ const ChatInterface: React.FC<NewChatInterfaceProps> = (
                     try {
                         const workflowData = await loadWorkflow(workflow.name);
                         setWorkflowContentDetail(workflowData);
+                        localStorage.setItem('workflowContentDetail', JSON.stringify(workflowData));
                         devLog.log('Successfully loaded workflow content detail:', workflowData);
                     } catch (error) {
                         devLog.error('Failed to load workflow content detail:', error);
@@ -161,9 +237,11 @@ const ChatInterface: React.FC<NewChatInterfaceProps> = (
                 }
             };
 
+            setLoading(true);
             loadWorkflowContent();
+            setLoading(false);
         }
-    }, [workflow]);
+    }, [workflow, user_id]);
 
     const executeWorkflow = useCallback(async (messageOverride?: string) => {
         console.log('executeWorkflow called')
@@ -199,10 +277,28 @@ const ChatInterface: React.FC<NewChatInterfaceProps> = (
             if (workflow.name == 'default_mode') {
                 isStreaming = true;
             } else {
-                if (!workflowContentDetail) {
+                let workflowData = null;
+
+                // 1차: localStorage에서 workflowContentDetail 가져오기 시도
+                try {
+                    const storedWorkflowData = localStorage.getItem('workflowContentDetail');
+                    if (storedWorkflowData) {
+                        workflowData = JSON.parse(storedWorkflowData);
+                    }
+                } catch (error) {
+                    console.warn('Failed to load workflow data from localStorage:', error);
+                }
+
+                // 2차: state의 workflowContentDetail 사용
+                if (!workflowData && workflowContentDetail) {
+                    workflowData = workflowContentDetail;
+                }
+
+                if (!workflowData) {
                     throw new Error("워크플로우 데이터가 로드되지 않았습니다.");
                 }
-                isStreaming = await isStreamingWorkflowFromWorkflow(workflowContentDetail);
+
+                isStreaming = await isStreamingWorkflowFromWorkflow(workflowData);
             }
 
             const { interactionId, workflowId, workflowName } = existingChatData || {
@@ -296,10 +392,28 @@ const ChatInterface: React.FC<NewChatInterfaceProps> = (
             if (workflow.name == 'default_mode') {
                 isStreaming = true;
             } else {
-                if (!workflowContentDetail) {
+                let workflowData = null;
+
+                // 1차: localStorage에서 workflowContentDetail 가져오기 시도
+                try {
+                    const storedWorkflowData = localStorage.getItem('workflowContentDetail');
+                    if (storedWorkflowData) {
+                        workflowData = JSON.parse(storedWorkflowData);
+                    }
+                } catch (error) {
+                    console.warn('Failed to load workflow data from localStorage:', error);
+                }
+
+                // 2차: state의 workflowContentDetail 사용
+                if (!workflowData && workflowContentDetail) {
+                    workflowData = workflowContentDetail;
+                }
+
+                if (!workflowData) {
                     throw new Error("워크플로우 데이터가 로드되지 않았습니다.");
                 }
-                isStreaming = await isStreamingWorkflowFromWorkflow(workflowContentDetail);
+
+                isStreaming = await isStreamingWorkflowFromWorkflow(workflowData);
             }
 
             const { interactionId, workflowId, workflowName } = existingChatData || {
@@ -391,6 +505,27 @@ const ChatInterface: React.FC<NewChatInterfaceProps> = (
             router.replace(`${window.location.pathname}?${newSearchParams.toString()}`, { scroll: false });
         }
     }, [initialMessageToExecute, executeWorkflow, router]);
+
+    // 스크롤 이벤트 리스너 등록
+    useEffect(() => {
+        const messagesElement = messagesRef.current;
+        if (messagesElement) {
+            messagesElement.addEventListener('scroll', handleUserScroll, { passive: true });
+            
+            return () => {
+                messagesElement.removeEventListener('scroll', handleUserScroll);
+            };
+        }
+    }, [handleUserScroll]);
+
+    // 컴포넌트 언마운트 시 타이머 정리
+    useEffect(() => {
+        return () => {
+            if (scrollTimeoutRef.current) {
+                clearTimeout(scrollTimeoutRef.current);
+            }
+        };
+    }, []);
 
 
 
@@ -492,10 +627,16 @@ const ChatInterface: React.FC<NewChatInterfaceProps> = (
     const renderMessageContent = (content: string, isUserMessage: boolean = false) => {
         if (!content) return null;
 
+        // 답변 내용을 전달하는 헬퍼 함수
+        const handleViewSourceWithContext = (sourceInfo: SourceInfo) => {
+            handleViewSource(sourceInfo, content);
+        };
+
         return (
             <MessageRenderer
                 content={content}
                 isUserMessage={isUserMessage}
+                onViewSource={handleViewSourceWithContext}
             />
         );
     };
@@ -571,186 +712,417 @@ const ChatInterface: React.FC<NewChatInterfaceProps> = (
                 onAdditionalParamsChange={setAdditionalParams}
             />
 
-            {/* Chat Area */}
+            {/* Chat Area with Resizable Panel */}
             <div className={styles.chatContainer}>
-                {/* Chat Area */}
-                <ChatArea
-                    mode={mode}
-                    loading={loading}
-                    ioLogs={ioLogs}
-                    workflow={workflow}
-                    executing={executing}
-                    setInputMessage={setInputMessage}
-                    messagesRef={messagesRef}
-                    pendingLogId={pendingLogId}
-                    renderMessageContent={renderMessageContent}
-                    formatDate={formatDate}
-                ></ChatArea>
-
-                <>
-                    {/* Collections Display Area - 입력창 위에 위치 */}
-                    {selectedCollection.length > 0 && (
-                        <div className={styles.collectionsDisplayArea}>
-                            <div className={styles.collectionsLabel}>
-                                <FiBookmark className={styles.labelIcon} />
-                                <span>선택된 컬렉션</span>
-                            </div>
-                            <div className={styles.selectedCollections}>
-                                {selectedCollection.map((collection, index) => (
-                                    <div key={index} className={styles.selectedCollection}>
-                                        <FiBookmark className={styles.collectionIcon} />
-                                        <span className={styles.collectionName}>
-                                            {collectionMapping[collection] || collection}
-                                        </span>
-                                        <button
-                                            className={styles.removeCollectionButton}
-                                            onClick={() => {
-                                                const removedCollection = selectedCollection[index];
-                                                const updatedCollections = selectedCollection.filter((_, i) => i !== index);
-
-                                                devLog.log('Removing individual collection:', {
-                                                    removedCollection,
-                                                    previousCollections: selectedCollection,
-                                                    updatedCollections,
-                                                    remainingCount: updatedCollections.length
-                                                });
-
-                                                setSelectedCollection(updatedCollections);
-
-                                                // 매핑에서도 제거된 컬렉션 정보 삭제
-                                                const updatedMapping = { ...collectionMapping };
-                                                delete updatedMapping[removedCollection];
-                                                setCollectionMapping(updatedMapping);
-
-                                                if (updatedCollections.length === 0) {
-                                                    // 모든 컬렉션이 제거된 경우
-                                                    localStorage.removeItem('selectedCollections');
-                                                    localStorage.removeItem('selectedCollection');
-                                                    setSelectedCollectionMakeName(null);
-                                                    devLog.log('All collections removed from localStorage');
-                                                } else {
-                                                    // 일부 컬렉션이 남아있는 경우
-                                                    const multipleCollectionsData = {
-                                                        collections: updatedCollections,
-                                                        mapping: updatedMapping,
-                                                        selectedAt: new Date().toISOString(),
-                                                        isMultiple: true
-                                                    };
-                                                    localStorage.setItem('selectedCollections', JSON.stringify(multipleCollectionsData));
-
-                                                    // 첫 번째 컬렉션을 단일 선택 형태로도 저장 (호환성)
-                                                    const firstCollection = updatedCollections[0];
-                                                    const firstMakeName = updatedMapping[firstCollection] || firstCollection;
-                                                    localStorage.setItem('selectedCollection', JSON.stringify({
-                                                        name: firstCollection,
-                                                        make_name: firstMakeName,
-                                                        selectedAt: new Date().toISOString()
-                                                    }));
-                                                    setSelectedCollectionMakeName(firstMakeName);
-
-                                                    devLog.log('Updated collections in localStorage:', multipleCollectionsData);
-                                                }
-                                            }}
-                                            title="컬렉션 해제"
-                                        >
-                                            <FiX />
-                                        </button>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Input Area */}
-                    <div className={styles.inputArea} style={{ pointerEvents: loading ? 'none' : 'auto' }}>
-                        <div className={styles.inputContainer}>
-                            <input
-                                type="text"
-                                placeholder="메시지를 입력하세요..."
-                                value={inputMessage}
-                                onChange={(e) => setInputMessage(e.target.value)}
-                                onKeyPress={handleKeyPress}
-                                disabled={executing}
-                                className={styles.messageInput}
+                {showPDFViewer && currentSourceInfo ? (
+                    <ResizablePanel
+                        defaultSplit={panelSplit}
+                        minSize={30}
+                        maxSize={80}
+                        direction="horizontal"
+                        onResize={(size) => {
+                            // 리사이즈 시작 시 플래그 설정
+                            setIsResizing(true);
+                            setPanelSplit(size);
+                            localStorage.setItem('chatPanelSplit', size.toString());
+                            
+                            // 리사이즈 완료 후 플래그 해제
+                            setTimeout(() => {
+                                setIsResizing(false);
+                            }, 100);
+                        }}
+                    >
+                        <div className={styles.chatContent}>
+                            {/* Chat Area */}
+                            <ChatArea
+                                mode={mode}
+                                loading={loading}
+                                ioLogs={ioLogs}
+                                workflow={workflow}
+                                executing={executing}
+                                setInputMessage={setInputMessage}
+                                messagesRef={messagesRef}
+                                pendingLogId={pendingLogId}
+                                renderMessageContent={renderMessageContent}
+                                formatDate={formatDate}
                             />
-                            <div className={styles.buttonGroup}>
-                                <div className={styles.attachmentWrapper} ref={attachmentButtonRef}>
-                                    <button
-                                        onClick={handleAttachmentClick}
-                                        className={`${styles.attachmentButton} ${showAttachmentMenu ? styles.active : ''}`}
-                                        disabled={executing}
-                                    >
-                                        <FiPlus />
-                                    </button>
-                                    {showAttachmentMenu && (
-                                        <div className={styles.attachmentMenu}>
+
+                            <>
+                                {/* Collections Display Area - 입력창 위에 위치 */}
+                                {selectedCollection.length > 0 && (
+                                    <div className={styles.collectionsDisplayArea}>
+                                        <div className={styles.collectionsLabel}>
+                                            <FiBookmark className={styles.labelIcon} />
+                                            <span>선택된 컬렉션</span>
+                                        </div>
+                                        <div className={styles.selectedCollections}>
+                                            {selectedCollection.map((collection, index) => (
+                                                <div key={index} className={styles.selectedCollection}>
+                                                    <FiBookmark className={styles.collectionIcon} />
+                                                    <span className={styles.collectionName}>
+                                                        {collectionMapping[collection] || collection}
+                                                    </span>
+                                                    <button
+                                                        className={styles.removeCollectionButton}
+                                                        onClick={() => {
+                                                            const removedCollection = selectedCollection[index];
+                                                            const updatedCollections = selectedCollection.filter((_, i) => i !== index);
+
+                                                            devLog.log('Removing individual collection:', {
+                                                                removedCollection,
+                                                                previousCollections: selectedCollection,
+                                                                updatedCollections,
+                                                                remainingCount: updatedCollections.length
+                                                            });
+
+                                                            setSelectedCollection(updatedCollections);
+
+                                                            // 매핑에서도 제거된 컬렉션 정보 삭제
+                                                            const updatedMapping = { ...collectionMapping };
+                                                            delete updatedMapping[removedCollection];
+                                                            setCollectionMapping(updatedMapping);
+
+                                                            if (updatedCollections.length === 0) {
+                                                                // 모든 컬렉션이 제거된 경우
+                                                                localStorage.removeItem('selectedCollections');
+                                                                localStorage.removeItem('selectedCollection');
+                                                                setSelectedCollectionMakeName(null);
+                                                                devLog.log('All collections removed from localStorage');
+                                                            } else {
+                                                                // 일부 컬렉션이 남아있는 경우
+                                                                const multipleCollectionsData = {
+                                                                    collections: updatedCollections,
+                                                                    mapping: updatedMapping,
+                                                                    selectedAt: new Date().toISOString(),
+                                                                    isMultiple: true
+                                                                };
+                                                                localStorage.setItem('selectedCollections', JSON.stringify(multipleCollectionsData));
+
+                                                                // 첫 번째 컬렉션을 단일 선택 형태로도 저장 (호환성)
+                                                                const firstCollection = updatedCollections[0];
+                                                                const firstMakeName = updatedMapping[firstCollection] || firstCollection;
+                                                                localStorage.setItem('selectedCollection', JSON.stringify({
+                                                                    name: firstCollection,
+                                                                    make_name: firstMakeName,
+                                                                    selectedAt: new Date().toISOString()
+                                                                }));
+                                                                setSelectedCollectionMakeName(firstMakeName);
+
+                                                                devLog.log('Updated collections in localStorage:', multipleCollectionsData);
+                                                            }
+                                                        }}
+                                                        title="컬렉션 해제"
+                                                    >
+                                                        <FiX />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Input Area */}
+                                <div className={styles.inputArea} style={{ pointerEvents: loading ? 'none' : 'auto' }}>
+                                    <div className={styles.inputContainer}>
+                                        <input
+                                            type="text"
+                                            placeholder="메시지를 입력하세요..."
+                                            value={inputMessage}
+                                            onChange={(e) => setInputMessage(e.target.value)}
+                                            onKeyPress={handleKeyPress}
+                                            disabled={executing}
+                                            className={styles.messageInput}
+                                        />
+                                        <div className={styles.buttonGroup}>
+                                            <div className={styles.attachmentWrapper} ref={attachmentButtonRef}>
+                                                <button
+                                                    onClick={handleAttachmentClick}
+                                                    className={`${styles.attachmentButton} ${showAttachmentMenu ? styles.active : ''}`}
+                                                    disabled={executing}
+                                                >
+                                                    <FiPlus />
+                                                </button>
+                                                {showAttachmentMenu && (
+                                                    <div className={styles.attachmentMenu}>
+                                                        <button
+                                                            className={styles.attachmentOption}
+                                                            onClick={() => handleAttachmentOption('collection')}
+                                                        >
+                                                            <FiBookmark />
+                                                            <span>컬렉션</span>
+                                                        </button>
+                                                        <button
+                                                            className={`${styles.attachmentOption} ${styles.disabled}`}
+                                                            disabled
+                                                        >
+                                                            <FiFolder />
+                                                            <span>파일</span>
+                                                        </button>
+                                                        <button
+                                                            className={`${styles.attachmentOption} ${styles.disabled}`}
+                                                            disabled
+                                                        >
+                                                            <FiImage />
+                                                            <span>사진</span>
+                                                        </button>
+                                                        <button
+                                                            className={`${styles.attachmentOption} ${styles.disabled}`}
+                                                            disabled
+                                                        >
+                                                            <FiMic />
+                                                            <span>음성</span>
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
                                             <button
-                                                className={styles.attachmentOption}
-                                                onClick={() => handleAttachmentOption('collection')}
+                                                onClick={() => {
+                                                    if (mode === 'new-default' || mode === 'new-workflow') {
+                                                        handleStartNewChatFlow();
+                                                    }
+                                                    else if (mode === 'deploy') {
+                                                        executeWorkflowDeploy();
+                                                    }
+                                                    else {
+                                                        executeWorkflow();
+                                                    }
+                                                }}
+                                                disabled={executing || !inputMessage.trim()}
+                                                className={`${styles.sendButton} ${executing || !inputMessage.trim() ? styles.disabled : ''}`}
                                             >
-                                                <FiBookmark />
-                                                <span>컬렉션</span>
-                                            </button>
-                                            <button
-                                                className={`${styles.attachmentOption} ${styles.disabled}`}
-                                                disabled
-                                            >
-                                                <FiFolder />
-                                                <span>파일</span>
-                                            </button>
-                                            <button
-                                                className={`${styles.attachmentOption} ${styles.disabled}`}
-                                                disabled
-                                            >
-                                                <FiImage />
-                                                <span>사진</span>
-                                            </button>
-                                            <button
-                                                className={`${styles.attachmentOption} ${styles.disabled}`}
-                                                disabled
-                                            >
-                                                <FiMic />
-                                                <span>음성</span>
+                                                {executing ? <div className={styles.miniSpinner}></div> : <FiSend />}
                                             </button>
                                         </div>
+                                    </div>
+                                    {executing && (
+                                        mode === "new-default" ? (
+                                            <p className={styles.executingNote}>
+                                                일반 채팅을 실행 중입니다...
+                                            </p>
+                                        ) : (
+                                            <p className={styles.executingNote}>
+                                                워크플로우를 실행 중입니다...
+                                            </p>
+                                        )
+
+                                    )}
+                                    {error && (
+                                        <p className={styles.errorNote}>{error}</p>
                                     )}
                                 </div>
-                                <button
-                                    onClick={() => {
-                                        if (mode === 'new-default' || mode === 'new-workflow') {
-                                            handleStartNewChatFlow();
-                                        }
-                                        else if (mode === 'deploy') {
-                                            executeWorkflowDeploy();
-                                        }
-                                        else {
-                                            executeWorkflow();
-                                        }
-                                    }}
-                                    disabled={executing || !inputMessage.trim()}
-                                    className={`${styles.sendButton} ${executing || !inputMessage.trim() ? styles.disabled : ''}`}
-                                >
-                                    {executing ? <div className={styles.miniSpinner}></div> : <FiSend />}
-                                </button>
-                            </div>
+                            </>
                         </div>
-                        {executing && (
-                            mode === "new-default" ? (
-                                <p className={styles.executingNote}>
-                                    일반 채팅을 실행 중입니다...
-                                </p>
-                            ) : (
-                                <p className={styles.executingNote}>
-                                    워크플로우를 실행 중입니다...
-                                </p>
-                            )
 
-                        )}
-                        {error && (
-                            <p className={styles.errorNote}>{error}</p>
-                        )}
+                        {/* Side Panel for PDF Viewer */}
+                        <div className={styles.sidePanel}>
+                            <SidePanelPDFViewer
+                                sourceInfo={currentSourceInfo}
+                                mode={mode}
+                                userId={user_id}
+                                onClose={() => {
+                                    // 스크롤 위치 저장 (사용자가 스크롤 중이 아닐 때만)
+                                    if (!isUserScrolling) {
+                                        saveScrollPosition();
+                                    }
+                                    
+                                    setShowPDFViewer(false);
+                                    setCurrentSourceInfo(null);
+                                    // 출처 뷰어 닫힘 시 패널 크기를 초기화하여 채팅 영역이 꽉 차게 설정
+                                    setPanelSplit(100);
+                                    localStorage.setItem('chatPanelSplit', '100');
+                                    
+                                    // 스크롤 위치 복원 (DOM 렌더링 후, 사용자가 스크롤 중이 아닐 때만)
+                                    setTimeout(() => {
+                                        if (!isUserScrolling) {
+                                            restoreScrollPosition();
+                                        }
+                                    }, 150);
+                                }}
+                            />
+                        </div>
+                    </ResizablePanel>
+                ) : (
+                    <div className={styles.chatContent}>
+                        {/* Chat Area */}
+                        <ChatArea
+                            mode={mode}
+                            loading={loading}
+                            ioLogs={ioLogs}
+                            workflow={workflow}
+                            executing={executing}
+                            setInputMessage={setInputMessage}
+                            messagesRef={messagesRef}
+                            pendingLogId={pendingLogId}
+                            renderMessageContent={renderMessageContent}
+                            formatDate={formatDate}
+                        />
+
+                        <>
+                            {/* Collections Display Area - 입력창 위에 위치 */}
+                            {selectedCollection.length > 0 && (
+                                <div className={styles.collectionsDisplayArea}>
+                                    <div className={styles.collectionsLabel}>
+                                        <FiBookmark className={styles.labelIcon} />
+                                        <span>선택된 컬렉션</span>
+                                    </div>
+                                    <div className={styles.selectedCollections}>
+                                        {selectedCollection.map((collection, index) => (
+                                            <div key={index} className={styles.selectedCollection}>
+                                                <FiBookmark className={styles.collectionIcon} />
+                                                <span className={styles.collectionName}>
+                                                    {collectionMapping[collection] || collection}
+                                                </span>
+                                                <button
+                                                    className={styles.removeCollectionButton}
+                                                    onClick={() => {
+                                                        const removedCollection = selectedCollection[index];
+                                                        const updatedCollections = selectedCollection.filter((_, i) => i !== index);
+
+                                                        devLog.log('Removing individual collection:', {
+                                                            removedCollection,
+                                                            previousCollections: selectedCollection,
+                                                            updatedCollections,
+                                                            remainingCount: updatedCollections.length
+                                                        });
+
+                                                        setSelectedCollection(updatedCollections);
+
+                                                        // 매핑에서도 제거된 컬렉션 정보 삭제
+                                                        const updatedMapping = { ...collectionMapping };
+                                                        delete updatedMapping[removedCollection];
+                                                        setCollectionMapping(updatedMapping);
+
+                                                        if (updatedCollections.length === 0) {
+                                                            // 모든 컬렉션이 제거된 경우
+                                                            localStorage.removeItem('selectedCollections');
+                                                            localStorage.removeItem('selectedCollection');
+                                                            setSelectedCollectionMakeName(null);
+                                                            devLog.log('All collections removed from localStorage');
+                                                        } else {
+                                                            // 일부 컬렉션이 남아있는 경우
+                                                            const multipleCollectionsData = {
+                                                                collections: updatedCollections,
+                                                                mapping: updatedMapping,
+                                                                selectedAt: new Date().toISOString(),
+                                                                isMultiple: true
+                                                            };
+                                                            localStorage.setItem('selectedCollections', JSON.stringify(multipleCollectionsData));
+
+                                                            // 첫 번째 컬렉션을 단일 선택 형태로도 저장 (호환성)
+                                                            const firstCollection = updatedCollections[0];
+                                                            const firstMakeName = updatedMapping[firstCollection] || firstCollection;
+                                                            localStorage.setItem('selectedCollection', JSON.stringify({
+                                                                name: firstCollection,
+                                                                make_name: firstMakeName,
+                                                                selectedAt: new Date().toISOString()
+                                                            }));
+                                                            setSelectedCollectionMakeName(firstMakeName);
+
+                                                            devLog.log('Updated collections in localStorage:', multipleCollectionsData);
+                                                        }
+                                                    }}
+                                                    title="컬렉션 해제"
+                                                >
+                                                    <FiX />
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Input Area */}
+                            <div className={styles.inputArea} style={{ pointerEvents: loading ? 'none' : 'auto' }}>
+                                <div className={styles.inputContainer}>
+                                    <input
+                                        type="text"
+                                        placeholder="메시지를 입력하세요..."
+                                        value={inputMessage}
+                                        onChange={(e) => setInputMessage(e.target.value)}
+                                        onKeyPress={handleKeyPress}
+                                        disabled={executing}
+                                        className={styles.messageInput}
+                                    />
+                                    <div className={styles.buttonGroup}>
+                                        <div className={styles.attachmentWrapper} ref={attachmentButtonRef}>
+                                            <button
+                                                onClick={handleAttachmentClick}
+                                                className={`${styles.attachmentButton} ${showAttachmentMenu ? styles.active : ''}`}
+                                                disabled={executing}
+                                            >
+                                                <FiPlus />
+                                            </button>
+                                            {showAttachmentMenu && (
+                                                <div className={styles.attachmentMenu}>
+                                                    <button
+                                                        className={styles.attachmentOption}
+                                                        onClick={() => handleAttachmentOption('collection')}
+                                                    >
+                                                        <FiBookmark />
+                                                        <span>컬렉션</span>
+                                                    </button>
+                                                    <button
+                                                        className={`${styles.attachmentOption} ${styles.disabled}`}
+                                                        disabled
+                                                    >
+                                                        <FiFolder />
+                                                        <span>파일</span>
+                                                    </button>
+                                                    <button
+                                                        className={`${styles.attachmentOption} ${styles.disabled}`}
+                                                        disabled
+                                                    >
+                                                        <FiImage />
+                                                        <span>사진</span>
+                                                    </button>
+                                                    <button
+                                                        className={`${styles.attachmentOption} ${styles.disabled}`}
+                                                        disabled
+                                                    >
+                                                        <FiMic />
+                                                        <span>음성</span>
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <button
+                                            onClick={() => {
+                                                if (mode === 'new-default' || mode === 'new-workflow') {
+                                                    handleStartNewChatFlow();
+                                                }
+                                                else if (mode === 'deploy') {
+                                                    executeWorkflowDeploy();
+                                                }
+                                                else {
+                                                    executeWorkflow();
+                                                }
+                                            }}
+                                            disabled={executing || !inputMessage.trim()}
+                                            className={`${styles.sendButton} ${executing || !inputMessage.trim() ? styles.disabled : ''}`}
+                                        >
+                                            {executing ? <div className={styles.miniSpinner}></div> : <FiSend />}
+                                        </button>
+                                    </div>
+                                </div>
+                                {executing && (
+                                    mode === "new-default" ? (
+                                        <p className={styles.executingNote}>
+                                            일반 채팅을 실행 중입니다...
+                                        </p>
+                                    ) : (
+                                        <p className={styles.executingNote}>
+                                            워크플로우를 실행 중입니다...
+                                        </p>
+                                    )
+
+                                )}
+                                {error && (
+                                    <p className={styles.errorNote}>{error}</p>
+                                )}
+                            </div>
+                        </>
                     </div>
-                </>
+                )}
             </div>
             <DeploymentModal
                 isOpen={showDeploymentModal}
@@ -811,6 +1183,7 @@ const ChatInterface: React.FC<NewChatInterfaceProps> = (
                 }}
                 selectedCollections={selectedCollection}
             />
+
         </div>
     );
 };

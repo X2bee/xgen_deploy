@@ -40,9 +40,7 @@ const Node: React.FC<NodeProps> = ({
     const [showAdvanced, setShowAdvanced] = useState<boolean>(false);
     const [isEditingName, setIsEditingName] = useState<boolean>(false);
     const [editingName, setEditingName] = useState<string>(nodeName);
-    const [tool_name, setToolNameValue] = useState('tool_name');
     const [error, setError] = useState('');
-
 
     // API 기반 옵션을 관리하는 상태
     const [apiOptions, setApiOptions] = useState<Record<string, ParameterOption[]>>({});
@@ -329,14 +327,11 @@ const Node: React.FC<NodeProps> = ({
             setError('');
         }
 
-
         const value = processedValue;
         if (value === undefined || value === null) {
             devLog.warn('Invalid parameter value:', value);
             return;
         }
-
-        setToolNameValue(processedValue);
 
         devLog.log('Calling onParameterChange...');
         if (typeof onParameterChange === 'function') {
@@ -348,6 +343,7 @@ const Node: React.FC<NodeProps> = ({
     };
 
     const numberList = ['INT', 'FLOAT', 'NUMBER', 'INTEGER'];
+    const booleanList = ['BOOL', 'BOOLEAN', 'TRUE', 'FALSE', 'bool'];
 
     // Separate parameters into basic/advanced
     const basicParameters = parameters?.filter(param => !param.optional) || [];
@@ -470,7 +466,7 @@ const Node: React.FC<NodeProps> = ({
                     // handle_id가 true인 경우에는 일반 파라미터 value 렌더링
                     <input
                         type="text"
-                        value={param.value || ''}
+                        value={param.value !== undefined && param.value !== null ? param.value.toString() : ''}
                         onChange={(e) => handleParamValueChange(e, param.id)}
                         onMouseDown={(e) => {
                             e.stopPropagation();
@@ -498,7 +494,7 @@ const Node: React.FC<NodeProps> = ({
                     // API에서 단일 값을 로드한 경우 input으로 렌더링
                     <input
                         type="text"
-                        value={param.value !== undefined && param.value !== null ? param.value : (apiSingleValue || '')}
+                        value={param.value !== undefined && param.value !== null ? param.value.toString() : (apiSingleValue || '')}
                         onChange={(e) => handleParamValueChange(e, param.id)}
                         onMouseDown={(e) => {
                             devLog.log('api single value input onMouseDown');
@@ -530,7 +526,7 @@ const Node: React.FC<NodeProps> = ({
                     />
                 ) : (effectiveOptions.length > 0 || isApiParam) ? (
                     <select
-                        value={param.value}
+                        value={param.value !== undefined && param.value !== null ? param.value.toString() : ''}
                         onChange={(e) => {
                             devLog.log('=== Select Parameter Change ===');
                             devLog.log('Parameter:', param.name, 'Previous value:', param.value, 'New value:', e.target.value);
@@ -590,13 +586,22 @@ const Node: React.FC<NodeProps> = ({
                             </>
                         )}
                     </select>
-                ) : param.type === 'BOOL' ? (
+                ) : param.type && booleanList.includes(param.type) ? (
                     <select
-                        value={param.value}
+                        value={param.value !== undefined && param.value !== null ? param.value.toString() : ''}
                         onChange={(e) => {
                             devLog.log('=== Boolean Parameter Change ===');
                             devLog.log('Parameter:', param.name, 'Previous value:', param.value, 'New value:', e.target.value);
-                            handleParamValueChange(e, param.id);
+
+                            // Boolean 값으로 변환하여 전달
+                            const booleanValue = e.target.value === 'true' ? true : e.target.value === 'false' ? false : e.target.value;
+
+                            // handleParamValueChange 대신 직접 onParameterChange 호출
+                            if (typeof onParameterChange === 'function') {
+                                onParameterChange(id, param.id, booleanValue);
+                                devLog.log('Boolean value sent:', booleanValue, 'type:', typeof booleanValue);
+                            }
+
                             devLog.log('=== Boolean Parameter Change Complete ===');
                         }}
                         onMouseDown={(e) => {
@@ -638,7 +643,7 @@ const Node: React.FC<NodeProps> = ({
                     <div className={styles.inputWrapper}>
                         <input
                             type={'text'}
-                            value={tool_name}
+                            value={param.value !== undefined && param.value !== null ? param.value.toString() : ''}
                             onChange={(e) => handleToolNameChange(e, param.id)}
                             onMouseDown={(e) => {
                                 devLog.log('input onMouseDown');
@@ -675,7 +680,7 @@ const Node: React.FC<NodeProps> = ({
                     <div className={styles.expandableWrapper}>
                         <input
                             type="text"
-                            value={param.value || ''}
+                            value={param.value !== undefined && param.value !== null ? param.value.toString() : ''}
                             onChange={(e) => handleParamValueChange(e, param.id)}
                             onMouseDown={(e) => {
                                 devLog.log('expandable input onMouseDown');
@@ -721,7 +726,7 @@ const Node: React.FC<NodeProps> = ({
                 ) : (
                     <input
                         type={param.type && numberList.includes(param.type) ? 'number' : 'text'}
-                        value={param.value}
+                        value={(param.value !== undefined && param.value !== null) ? param.type === 'STR' ? param.value.toString(): parseFloat(param.value.toString()): ''}
                         onChange={(e) => handleParamValueChange(e, param.id)}
                         onMouseDown={(e) => {
                             devLog.log('input onMouseDown');
