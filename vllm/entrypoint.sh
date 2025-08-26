@@ -14,4 +14,7 @@ else
     export AUTO_SERVE_MODEL=false
 fi
 
-python3 main.py
+if ! python3 main.py; then
+  echo "앱 빌드 실패. 컨테이너를 유지하기 위해 대기 모드로 전환합니다..."
+  tail -f /dev/null
+fi

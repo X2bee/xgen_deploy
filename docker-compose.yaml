@@ -26,7 +26,7 @@ services:
     ports:
       - ${NEXT_PUBLIC_BACKEND_PORT}:${NEXT_PUBLIC_BACKEND_PORT}
     depends_on:
-      - postgres
+      - xgen_frontend
 
   xgen_frontend:
     container_name: xgen_frontend
@@ -43,6 +43,8 @@ services:
     restart: unless-stopped
     ports:
       - ${NEXT_PUBLIC_PORT}:${NEXT_PUBLIC_PORT}
+    depends_on:
+      - postgres
 
   qdrant:
     image: qdrant/qdrant:latest
@@ -82,7 +84,8 @@ services:
     entrypoint: ["/vllm/entrypoint.sh"]
     volumes:
       - ./vllm:/vllm
-
+    depends_on:
+      - xgen_backend
 volumes:
   postgres_data:
 
